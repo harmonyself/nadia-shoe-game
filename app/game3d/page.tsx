@@ -18,7 +18,7 @@ export default function ShoeHunt3D() {
   const cameraRef = useRef<THREE.PerspectiveCamera | null>(null);
   const rendererRef = useRef<THREE.WebGLRenderer | null>(null);
   const shoesRef = useRef<THREE.Group[]>([]);
-  const playerRef = useRef({ x: 0, z: 0, rotationY: 0 });
+  const playerRef = useRef({ x: 0, z: 3, rotationY: 0 });
   const keysRef = useRef<KeysMap>({});
   const animationIdRef = useRef<number | null>(null);
   const timerIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -64,7 +64,7 @@ export default function ShoeHunt3D() {
     sceneRef.current = null;
     cameraRef.current = null;
     shoesRef.current = [];
-    playerRef.current = { x: 0, z: 0, rotationY: 0 };
+    playerRef.current = { x: 0, z: 3, rotationY: 0 };
 
     // (2) 씬
     const scene = new THREE.Scene();
@@ -167,6 +167,11 @@ export default function ShoeHunt3D() {
     // (10) 이벤트
     const onKeyDown = (e: KeyboardEvent) => {
       keysRef.current[e.key.toLowerCase()] = true;
+      
+      // 대기 화면에서 Enter로 시작
+      if (gameState === 'start' && (e.key === 'Enter' || e.key === ' ')) {
+        startGame();
+      }
     };
     const onKeyUp = (e: KeyboardEvent) => {
       keysRef.current[e.key.toLowerCase()] = false;
