@@ -18,10 +18,35 @@ export default function ShoeHunt3D() {
   const cameraRef = useRef<THREE.PerspectiveCamera | null>(null);
   const rendererRef = useRef<THREE.WebGLRenderer | null>(null);
   const shoesRef = useRef<THREE.Group[]>([]);
-  const playerRef = useRef({ x: 0, z: 3, rotationY: 0 });
+  const playerRef = useRef({ x: 0, z: 3, rotationY: 0 }); // 시작 z=3 (카메라와 맞춤)
   const keysRef = useRef<KeysMap>({});
   const animationIdRef = useRef<number | null>(null);
   const timerIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  // 전역 키 리스너: IME 영향 없는 e.code 사용 + Enter/Space로 시작
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent) => {
+      keysRef.current[e.code] = true;
+
+      // 대기/게임오버/레벨완료 화면에서 Enter/Space로 시작
+      if ((gameState === 'start' || gameState === 'gameOver' || gameState === 'levelComplete') &&
+          (e.code === 'Enter' || e.code === 'Space')) {
+        startGame();
+      }
+    };
+    const onKeyUp = (e: KeyboardEvent) => {
+      keysRef.current[e.code] = false;
+    };
+
+    window.addEventListener('keydown', onKeyDown);
+    window.addEventListener('keyup', onKeyUp);
+    return () => {
+      window.removeEventListener('keydown', onKeyDown);
+      window.removeEventListener('keyup', onKeyUp);
+    };
+    // gameState/startGame을 의존성에 넣지 않음: 시작키만 누르면 최신 startGame이 호출됨
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [/* mount once */]);
 
   // 타이머
   useEffect(() => {
@@ -49,41 +74,39 @@ export default function ShoeHunt3D() {
     const mount = mountRef.current;
     if (!mount) return;
 
-    // (1) 기존 씬/렌더러 정리: 짧은 회로 표현식 금지 → if문으로 전환 (no-unused-expressions 대응)
+    // 기존 씬/렌더러 정리
     if (rendererRef.current) {
       try {
         if (mount.contains(rendererRef.current.domElement)) {
           mount.removeChild(rendererRef.current.domElement);
         }
-      } catch {
-        // ignore
-      }
+      } catch {}
       rendererRef.current.dispose();
       rendererRef.current = null;
     }
     sceneRef.current = null;
     cameraRef.current = null;
     shoesRef.current = [];
-    playerRef.current = { x: 0, z: 3, rotationY: 0 };
+    playerRef.current = { x: 0, z: 3, rotationY: 0 }; // 시작 위치 고정
 
-    // (2) 씬
+    // 씬
     const scene = new THREE.Scene();
     scene.background = new THREE.Color(0x87ceeb);
     scene.fog = new THREE.Fog(0x87ceeb, 10, 50);
     sceneRef.current = scene;
 
-    // (3) 카메라: 초기 시선 고정으로 검은 화면 방지
-    const camera = new THREE.PerspectiveCamera(75, 1, 0.1, 1000); // aspect는 아래에서 재계산
+    // 카메라
+    const camera = new THREE.PerspectiveCamera(75, 1, 0.1, 1000);
     camera.position.set(0, 1.6, 3);
     camera.lookAt(0, 1.6, -3);
     cameraRef.current = camera;
 
-    // (4) 렌더러: 컬러스페이스/픽셀비율/톤매핑 설정 + 컨테이너 크기 기준
+    // 렌더러
     const renderer = new THREE.WebGLRenderer({ antialias: true });
-    renderer.outputColorSpace = THREE.SRGBColorSpace; // r152+
+    renderer.outputColorSpace = THREE.SRGBColorSpace;
     renderer.toneMapping = THREE.NoToneMapping;
     renderer.toneMappingExposure = 1.0;
-    renderer.setPixelRatio(Math.min((window.devicePixelRatio ?? 1), 2));
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio ?? 1, 2));
 
     const { clientWidth, clientHeight } = mount;
     renderer.setSize(clientWidth, clientHeight);
@@ -94,13 +117,13 @@ export default function ShoeHunt3D() {
     mount.appendChild(renderer.domElement);
     rendererRef.current = renderer;
 
-    // (5) 조명
+    // 조명
     scene.add(new THREE.AmbientLight(0xffffff, 0.6));
     const directionalLight = new THREE.DirectionalLight(0xffffff, 0.8);
     directionalLight.position.set(10, 20, 10);
     scene.add(directionalLight);
 
-    // (6) 바닥
+    // 바닥
     const floor = new THREE.Mesh(
       new THREE.PlaneGeometry(30, 30),
       new THREE.MeshStandardMaterial({ color: 0x90ee90, roughness: 0.8 })
@@ -108,7 +131,7 @@ export default function ShoeHunt3D() {
     floor.rotation.x = -Math.PI / 2;
     scene.add(floor);
 
-    // (7) 벽
+    // 벽
     const wallMaterial = new THREE.MeshStandardMaterial({ color: 0xffd700, roughness: 0.7 });
     const backWall = new THREE.Mesh(new THREE.BoxGeometry(30, 5, 0.5), wallMaterial);
     backWall.position.set(0, 2.5, -15);
@@ -123,7 +146,7 @@ export default function ShoeHunt3D() {
     rightWall.position.set(15, 2.5, 0);
     scene.add(rightWall);
 
-    // (8) 즉시 확인용 디버그 큐브 — 보이면 렌더 OK (원하면 이후 삭제해도 됨)
+    // 디버그 큐브(보이면 렌더 OK)
     const debugCube = new THREE.Mesh(
       new THREE.BoxGeometry(1, 1, 1),
       new THREE.MeshStandardMaterial({ color: 0xff55ff, roughness: 0.5, metalness: 0.1 })
@@ -131,7 +154,7 @@ export default function ShoeHunt3D() {
     debugCube.position.set(0, 1.6, -3);
     scene.add(debugCube);
 
-    // (9) 신발
+    // 신발
     const shoes: THREE.Group[] = [];
     const shoeColors = [0xff0000, 0x00ff00, 0x0000ff, 0xffff00, 0xff00ff, 0x00ffff];
 
@@ -164,21 +187,8 @@ export default function ShoeHunt3D() {
     }
     shoesRef.current = shoes;
 
-    // (10) 이벤트
-    const onKeyDown = (e: KeyboardEvent) => {
-      keysRef.current[e.key.toLowerCase()] = true;
-      
-      // 대기 화면에서 Enter로 시작
-      if (gameState === 'start' && (e.key === 'Enter' || e.key === ' ')) {
-        startGame();
-      }
-    };
-    const onKeyUp = (e: KeyboardEvent) => {
-      keysRef.current[e.key.toLowerCase()] = false;
-    };
-
+    // 클릭: 레이캐스트로 신발 찾기
     const onClick = (event: MouseEvent) => {
-      // 게임 상태 체크
       if (gameState !== 'playing') return;
 
       const mouse = new THREE.Vector2(
@@ -189,12 +199,10 @@ export default function ShoeHunt3D() {
       const raycaster = new THREE.Raycaster();
       raycaster.setFromCamera(mouse, camera);
 
-      // 타입 정합성: Object3DEventMap 사용
       const intersects: THREE.Intersection<THREE.Object3D<THREE.Object3DEventMap>>[] =
         raycaster.intersectObjects(scene.children, true);
 
       for (const intersect of intersects) {
-        // 상위 Group까지 올라감
         let obj: THREE.Object3D<THREE.Object3DEventMap> = intersect.object;
         while (obj.parent && obj.parent.type !== 'Scene') {
           obj = obj.parent as THREE.Object3D<THREE.Object3DEventMap>;
@@ -204,7 +212,6 @@ export default function ShoeHunt3D() {
         if (userData?.isShoe && !userData?.found) {
           userData.found = true;
 
-          // 자식 Mesh들의 재질 색상 변경
           obj.children.forEach((child) => {
             if (child instanceof THREE.Mesh) {
               const mat = child.material;
@@ -238,8 +245,6 @@ export default function ShoeHunt3D() {
       renderer.setSize(w, h);
     };
 
-    window.addEventListener('keydown', onKeyDown);
-    window.addEventListener('keyup', onKeyUp);
     window.addEventListener('click', onClick);
     window.addEventListener('mousemove', onMouseMove);
     window.addEventListener('resize', onResize);
@@ -248,7 +253,7 @@ export default function ShoeHunt3D() {
       renderer.domElement.requestPointerLock();
     });
 
-    // (11) 애니메이션 루프: 항상 렌더 (idle 렌더), 이동/물리는 playing일 때만
+    // 애니메이션 루프: 항상 렌더, 이동은 playing일 때만
     const animate = () => {
       animationIdRef.current = requestAnimationFrame(animate);
 
@@ -256,19 +261,19 @@ export default function ShoeHunt3D() {
         const speed = 0.1;
         const rotation = playerRef.current.rotationY;
 
-        if (keysRef.current['w'] || keysRef.current['arrowup']) {
+        if (keysRef.current['KeyW'] || keysRef.current['ArrowUp']) {
           playerRef.current.x -= Math.sin(rotation) * speed;
           playerRef.current.z -= Math.cos(rotation) * speed;
         }
-        if (keysRef.current['s'] || keysRef.current['arrowdown']) {
+        if (keysRef.current['KeyS'] || keysRef.current['ArrowDown']) {
           playerRef.current.x += Math.sin(rotation) * speed;
           playerRef.current.z += Math.cos(rotation) * speed;
         }
-        if (keysRef.current['a'] || keysRef.current['arrowleft']) {
+        if (keysRef.current['KeyA'] || keysRef.current['ArrowLeft']) {
           playerRef.current.x -= Math.cos(rotation) * speed;
           playerRef.current.z += Math.sin(rotation) * speed;
         }
-        if (keysRef.current['d'] || keysRef.current['arrowright']) {
+        if (keysRef.current['KeyD'] || keysRef.current['ArrowRight']) {
           playerRef.current.x += Math.cos(rotation) * speed;
           playerRef.current.z -= Math.sin(rotation) * speed;
         }
@@ -276,23 +281,22 @@ export default function ShoeHunt3D() {
         // 경계
         playerRef.current.x = Math.max(-14, Math.min(14, playerRef.current.x));
         playerRef.current.z = Math.max(-14, Math.min(14, playerRef.current.z));
-
-        camera.position.x = playerRef.current.x;
-        camera.position.z = playerRef.current.z;
-        camera.rotation.y = playerRef.current.rotationY;
       }
+
+      // 플레이어 따라 카메라 위치/회전 업데이트는 항상
+      camera.position.x = playerRef.current.x;
+      camera.position.z = playerRef.current.z;
+      camera.rotation.y = playerRef.current.rotationY;
 
       renderer.render(scene, camera);
     };
 
-    // (12) 첫 프레임 즉시 렌더 — 검은 화면 진단에 도움
+    // 첫 프레임 + 시작
     renderer.render(scene, camera);
     animate();
 
-    // cleanup
+    // 정리
     return () => {
-      window.removeEventListener('keydown', onKeyDown);
-      window.removeEventListener('keyup', onKeyUp);
       window.removeEventListener('click', onClick);
       window.removeEventListener('mousemove', onMouseMove);
       window.removeEventListener('resize', onResize);
@@ -306,14 +310,12 @@ export default function ShoeHunt3D() {
         if (renderer.domElement && mount.contains(renderer.domElement)) {
           mount.removeChild(renderer.domElement);
         }
-      } catch {
-        // ignore
-      }
+      } catch {}
       renderer.dispose();
     };
   }, [gameState]);
 
-  // 게임 시작(의존성 안정화)
+  // 게임 시작
   const startGame = useCallback(() => {
     const shoesCount = level;
     setTotalShoes(shoesCount);
@@ -386,7 +388,7 @@ export default function ShoeHunt3D() {
               💬 버스 곧 출발해요! 신발 찾으세요!
             </div>
             <div className="bg-black bg-opacity-60 text-white px-4 py-2 rounded-lg inline-block text-sm">
-              🎮 WASD로 이동 | 마우스로 둘러보기 | 클릭해서 신발 찾기
+              🎮 WASD/화살표 이동 | 마우스 회전(캔버스 클릭) | 클릭해서 신발 찾기
             </div>
           </div>
         )}
@@ -399,11 +401,11 @@ export default function ShoeHunt3D() {
             <h1 className="text-5xl font-bold text-white">나디아의 꿈 3D</h1>
             <h2 className="text-3xl text-yellow-300">신발 찾기 게임 👟</h2>
 
-            <div className="bg-white bg-opacity-10 p-6 rounded-xl text-black">
+            <div className="bg-white bg-opacity-10 p-6 rounded-xl text-white">
               <p className="text-xl mb-4">🌙 3D 세계에서 신발을 찾아라!</p>
               <ul className="text-left space-y-2">
                 <li>🎮 WASD 또는 화살표로 이동</li>
-                <li>🖱️ 마우스로 둘러보기</li>
+                <li>🖱️ 마우스로 둘러보기(먼저 캔버스 클릭)</li>
                 <li>👆 신발을 클릭해서 찾기</li>
                 <li>⏰ 시간 안에 모든 신발 찾기!</li>
               </ul>
@@ -413,7 +415,7 @@ export default function ShoeHunt3D() {
               onClick={startGame}
               className="bg-yellow-500 hover:bg-yellow-600 text-black px-12 py-4 rounded-full text-2xl font-bold transition-all transform hover:scale-105 pointer-events-auto"
             >
-              게임 시작!
+              게임 시작! (Enter/Space 가능)
             </button>
           </div>
         </div>
@@ -452,7 +454,7 @@ export default function ShoeHunt3D() {
               onClick={resetGame}
               className="bg-purple-600 hover:bg-purple-700 text-white px-12 py-4 rounded-full text-2xl font-bold transition-all transform hover:scale-105 pointer-events-auto"
             >
-              다시 도전하기
+              다시 도전하기 (Enter/Space 가능)
             </button>
           </div>
         </div>
