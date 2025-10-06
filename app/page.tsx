@@ -49,7 +49,6 @@ export default function ShoeHuntGame() {
   }, [timeLeft, gameState]);
   
   const crowdMessages = useMemo(() => [
-    "저 사람 팀장 아닌데...",
     "신발도 없잖아 ㅋㅋ",
     "팀장이 신발이 없다고?",
     "버스 곧 출발하는데...",
