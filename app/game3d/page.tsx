@@ -142,14 +142,6 @@ export default function ShoeHunt3D() {
     const left = new THREE.Mesh(new THREE.BoxGeometry(0.5, 5, 30), wallMat); left.position.set(-15, 2.5, 0); scene.add(left);
     const right = new THREE.Mesh(new THREE.BoxGeometry(0.5, 5, 30), wallMat); right.position.set(15, 2.5, 0); scene.add(right);
 
-    // 디버그 큐브(보이면 렌더 OK, 나중에 삭제 가능)
-    const debugCube = new THREE.Mesh(
-      new THREE.BoxGeometry(1, 1, 1),
-      new THREE.MeshStandardMaterial({ color: 0xff55ff, roughness: 0.5, metalness: 0.1 })
-    );
-    debugCube.position.set(0, 1.6, -3);
-    scene.add(debugCube);
-
     // 신발
     const shoes: THREE.Group[] = [];
     const colors = [0xff0000, 0x00ff00, 0x0000ff, 0xffff00, 0xff00ff, 0x00ffff];
