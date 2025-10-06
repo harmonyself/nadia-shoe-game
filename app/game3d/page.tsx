@@ -3,6 +3,72 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import * as THREE from 'three';
 
+// ✨ 더 잘 보이는 파티클 (픽셀 크기 고정 + 가산합성 + 깊이쓰기 끔)
+function spawnParticles(scene: THREE.Scene, at: THREE.Vector3, color = 0xffdd66): void {
+  const count = 100;
+
+  const geo = new THREE.BufferGeometry();
+  const positions = new Float32Array(count * 3);
+  const velocities = new Float32Array(count * 3);
+
+  for (let i = 0; i < count; i++) {
+    const i3 = i * 3;
+    positions[i3 + 0] = at.x;
+    positions[i3 + 1] = at.y + 0.6; // 시작 높이 살짝 위로
+    positions[i3 + 2] = at.z;
+
+    // 반구 방향 랜덤 속도
+    velocities[i3 + 0] = (Math.random() - 0.5) * 2.2;
+    velocities[i3 + 1] = Math.random() * 2.4 + 0.8;
+    velocities[i3 + 2] = (Math.random() - 0.5) * 2.2;
+  }
+
+  geo.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+
+  const mat = new THREE.PointsMaterial({
+    color,
+    size: 14,                 // ✅ 픽셀 크기 (크게)
+    sizeAttenuation: false,   // ✅ 거리와 무관하게 픽셀 고정
+    transparent: true,
+    opacity: 1,
+    depthWrite: false,        // ✅ 뒤에 묻히지 않게
+    blending: THREE.AdditiveBlending, // ✅ 가산합성(빛나는 느낌)
+  });
+
+  const points = new THREE.Points(geo, mat);
+  points.frustumCulled = false; // 화면 밖 판정 오차 방지
+  scene.add(points);
+
+  const start = performance.now();
+  function tick() {
+    const t = (performance.now() - start) / 1000; // 0~1+
+    const pos = geo.getAttribute('position') as THREE.BufferAttribute;
+
+    for (let i = 0; i < count; i++) {
+      const i3 = i * 3;
+      positions[i3 + 0] += velocities[i3 + 0] * 0.03;
+      positions[i3 + 1] += velocities[i3 + 1] * 0.03 - 0.05; // 중력
+      positions[i3 + 2] += velocities[i3 + 2] * 0.03;
+    }
+    pos.needsUpdate = true;
+
+    // 0.9초 동안 서서히 사라지게
+    const life = 0.9;
+    const fade = Math.max(0, 1 - t / life);
+    mat.opacity = fade;
+
+    if (t < life) {
+      requestAnimationFrame(tick);
+    } else {
+      scene.remove(points);
+      geo.dispose();
+      mat.dispose();
+    }
+  }
+  requestAnimationFrame(tick);
+}
+
+
 type GameState = 'start' | 'playing' | 'levelComplete' | 'gameOver';
 type KeysMap = Record<string, boolean>;
 
@@ -21,6 +87,7 @@ export default function ShoeHunt3D() {
   const rendererRef = useRef<THREE.WebGLRenderer | null>(null);
   const raycasterRef = useRef(new THREE.Raycaster());
   const shoesRef = useRef<THREE.Group[]>([]);
+  const particlePosRef = useRef(new THREE.Vector3()); // 파티클 월드 좌표 임시 저장
   const playerRef = useRef({ x: 0, z: 3, rotationY: 0 });
   const keysRef = useRef<KeysMap>({});
   const animationIdRef = useRef<number | null>(null);
@@ -168,9 +235,11 @@ export default function ShoeHunt3D() {
       for (const hit of hits) {
         let obj: THREE.Object3D = hit.object;
         while (obj.parent && obj.parent.type !== 'Scene') obj = obj.parent as THREE.Object3D;
+
         const ud = obj.userData as { isShoe?: boolean; found?: boolean };
         if (ud?.isShoe && !ud?.found) {
           ud.found = true;
+
           obj.children.forEach((child) => {
             if (child instanceof THREE.Mesh) {
               const mats = Array.isArray(child.material) ? child.material : [child.material];
@@ -183,7 +252,15 @@ export default function ShoeHunt3D() {
               });
             }
           });
+
           setFoundShoes((p) => p + 1);
+
+          // 🔽🔽🔽 여기 아래에 3줄을 추가하세요 🔽🔽🔽
+          obj.getWorldPosition(particlePosRef.current);
+          if (sceneRef.current) {
+            spawnParticles(sceneRef.current, particlePosRef.current, 0xffdd66);
+          }
+          
           break;
         }
       }
