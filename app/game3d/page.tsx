@@ -49,7 +49,7 @@ export default function ShoeHunt3D() {
     const mount = mountRef.current;
     if (!mount) return;
 
-    // 기존 씬/렌더러 정리 (짧은 회로 표현식 → if문으로 변경)
+    // (1) 기존 씬/렌더러 정리: 짧은 회로 표현식 금지 → if문으로 전환 (no-unused-expressions 대응)
     if (rendererRef.current) {
       try {
         if (mount.contains(rendererRef.current.domElement)) {
@@ -66,31 +66,41 @@ export default function ShoeHunt3D() {
     shoesRef.current = [];
     playerRef.current = { x: 0, z: 0, rotationY: 0 };
 
-    // 씬
+    // (2) 씬
     const scene = new THREE.Scene();
     scene.background = new THREE.Color(0x87ceeb);
     scene.fog = new THREE.Fog(0x87ceeb, 10, 50);
     sceneRef.current = scene;
 
-    // 카메라
-    const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
-    camera.position.set(0, 1.6, 0);
+    // (3) 카메라: 초기 시선 고정으로 검은 화면 방지
+    const camera = new THREE.PerspectiveCamera(75, 1, 0.1, 1000); // aspect는 아래에서 재계산
+    camera.position.set(0, 1.6, 3);
+    camera.lookAt(0, 1.6, -3);
     cameraRef.current = camera;
 
-    // 렌더러
+    // (4) 렌더러: 컬러스페이스/픽셀비율/톤매핑 설정 + 컨테이너 크기 기준
     const renderer = new THREE.WebGLRenderer({ antialias: true });
-    renderer.setSize(window.innerWidth, window.innerHeight);
+    renderer.outputColorSpace = THREE.SRGBColorSpace; // r152+
+    renderer.toneMapping = THREE.NoToneMapping;
+    renderer.toneMappingExposure = 1.0;
+    renderer.setPixelRatio(Math.min((window.devicePixelRatio ?? 1), 2));
+
+    const { clientWidth, clientHeight } = mount;
+    renderer.setSize(clientWidth, clientHeight);
+    camera.aspect = clientWidth / clientHeight;
+    camera.updateProjectionMatrix();
+
     renderer.shadowMap.enabled = true;
     mount.appendChild(renderer.domElement);
     rendererRef.current = renderer;
 
-    // 조명
+    // (5) 조명
     scene.add(new THREE.AmbientLight(0xffffff, 0.6));
     const directionalLight = new THREE.DirectionalLight(0xffffff, 0.8);
     directionalLight.position.set(10, 20, 10);
     scene.add(directionalLight);
 
-    // 바닥
+    // (6) 바닥
     const floor = new THREE.Mesh(
       new THREE.PlaneGeometry(30, 30),
       new THREE.MeshStandardMaterial({ color: 0x90ee90, roughness: 0.8 })
@@ -98,7 +108,7 @@ export default function ShoeHunt3D() {
     floor.rotation.x = -Math.PI / 2;
     scene.add(floor);
 
-    // 벽
+    // (7) 벽
     const wallMaterial = new THREE.MeshStandardMaterial({ color: 0xffd700, roughness: 0.7 });
     const backWall = new THREE.Mesh(new THREE.BoxGeometry(30, 5, 0.5), wallMaterial);
     backWall.position.set(0, 2.5, -15);
@@ -113,7 +123,15 @@ export default function ShoeHunt3D() {
     rightWall.position.set(15, 2.5, 0);
     scene.add(rightWall);
 
-    // 신발
+    // (8) 즉시 확인용 디버그 큐브 — 보이면 렌더 OK (원하면 이후 삭제해도 됨)
+    const debugCube = new THREE.Mesh(
+      new THREE.BoxGeometry(1, 1, 1),
+      new THREE.MeshStandardMaterial({ color: 0xff55ff, roughness: 0.5, metalness: 0.1 })
+    );
+    debugCube.position.set(0, 1.6, -3);
+    scene.add(debugCube);
+
+    // (9) 신발
     const shoes: THREE.Group[] = [];
     const shoeColors = [0xff0000, 0x00ff00, 0x0000ff, 0xffff00, 0xff00ff, 0x00ffff];
 
@@ -146,7 +164,7 @@ export default function ShoeHunt3D() {
     }
     shoesRef.current = shoes;
 
-    // 이벤트
+    // (10) 이벤트
     const onKeyDown = (e: KeyboardEvent) => {
       keysRef.current[e.key.toLowerCase()] = true;
     };
@@ -155,6 +173,7 @@ export default function ShoeHunt3D() {
     };
 
     const onClick = (event: MouseEvent) => {
+      // 게임 상태 체크
       if (gameState !== 'playing') return;
 
       const mouse = new THREE.Vector2(
@@ -165,7 +184,7 @@ export default function ShoeHunt3D() {
       const raycaster = new THREE.Raycaster();
       raycaster.setFromCamera(mouse, camera);
 
-      // ⬇️ 타입 수정: THREE.Event → THREE.Object3DEventMap
+      // 타입 정합성: Object3DEventMap 사용
       const intersects: THREE.Intersection<THREE.Object3D<THREE.Object3DEventMap>>[] =
         raycaster.intersectObjects(scene.children, true);
 
@@ -208,9 +227,10 @@ export default function ShoeHunt3D() {
     };
 
     const onResize = () => {
-      camera.aspect = window.innerWidth / window.innerHeight;
+      const { clientWidth: w, clientHeight: h } = mount;
+      camera.aspect = w / h;
       camera.updateProjectionMatrix();
-      renderer.setSize(window.innerWidth, window.innerHeight);
+      renderer.setSize(w, h);
     };
 
     window.addEventListener('keydown', onKeyDown);
@@ -223,43 +243,45 @@ export default function ShoeHunt3D() {
       renderer.domElement.requestPointerLock();
     });
 
-    // 애니메이션 루프
+    // (11) 애니메이션 루프: 항상 렌더 (idle 렌더), 이동/물리는 playing일 때만
     const animate = () => {
-      if (gameState !== 'playing') return;
-
       animationIdRef.current = requestAnimationFrame(animate);
 
-      const speed = 0.1;
-      const rotation = playerRef.current.rotationY;
+      if (gameState === 'playing') {
+        const speed = 0.1;
+        const rotation = playerRef.current.rotationY;
 
-      if (keysRef.current['w'] || keysRef.current['arrowup']) {
-        playerRef.current.x -= Math.sin(rotation) * speed;
-        playerRef.current.z -= Math.cos(rotation) * speed;
-      }
-      if (keysRef.current['s'] || keysRef.current['arrowdown']) {
-        playerRef.current.x += Math.sin(rotation) * speed;
-        playerRef.current.z += Math.cos(rotation) * speed;
-      }
-      if (keysRef.current['a'] || keysRef.current['arrowleft']) {
-        playerRef.current.x -= Math.cos(rotation) * speed;
-        playerRef.current.z += Math.sin(rotation) * speed;
-      }
-      if (keysRef.current['d'] || keysRef.current['arrowright']) {
-        playerRef.current.x += Math.cos(rotation) * speed;
-        playerRef.current.z -= Math.sin(rotation) * speed;
-      }
+        if (keysRef.current['w'] || keysRef.current['arrowup']) {
+          playerRef.current.x -= Math.sin(rotation) * speed;
+          playerRef.current.z -= Math.cos(rotation) * speed;
+        }
+        if (keysRef.current['s'] || keysRef.current['arrowdown']) {
+          playerRef.current.x += Math.sin(rotation) * speed;
+          playerRef.current.z += Math.cos(rotation) * speed;
+        }
+        if (keysRef.current['a'] || keysRef.current['arrowleft']) {
+          playerRef.current.x -= Math.cos(rotation) * speed;
+          playerRef.current.z += Math.sin(rotation) * speed;
+        }
+        if (keysRef.current['d'] || keysRef.current['arrowright']) {
+          playerRef.current.x += Math.cos(rotation) * speed;
+          playerRef.current.z -= Math.sin(rotation) * speed;
+        }
 
-      // 경계
-      playerRef.current.x = Math.max(-14, Math.min(14, playerRef.current.x));
-      playerRef.current.z = Math.max(-14, Math.min(14, playerRef.current.z));
+        // 경계
+        playerRef.current.x = Math.max(-14, Math.min(14, playerRef.current.x));
+        playerRef.current.z = Math.max(-14, Math.min(14, playerRef.current.z));
 
-      camera.position.x = playerRef.current.x;
-      camera.position.z = playerRef.current.z;
-      camera.rotation.y = playerRef.current.rotationY;
+        camera.position.x = playerRef.current.x;
+        camera.position.z = playerRef.current.z;
+        camera.rotation.y = playerRef.current.rotationY;
+      }
 
       renderer.render(scene, camera);
     };
 
+    // (12) 첫 프레임 즉시 렌더 — 검은 화면 진단에 도움
+    renderer.render(scene, camera);
     animate();
 
     // cleanup
