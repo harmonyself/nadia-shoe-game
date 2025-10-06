@@ -23,30 +23,44 @@ export default function ShoeHunt3D() {
   const animationIdRef = useRef<number | null>(null);
   const timerIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
-  // 전역 키 리스너: IME 영향 없는 e.code 사용 + Enter/Space로 시작
-  useEffect(() => {
-    const onKeyDown = (e: KeyboardEvent) => {
-      keysRef.current[e.code] = true;
+  // 전역 키 리스너: document 캡처 단계 + preventDefault + e.code 사용
+useEffect(() => {
+  const movementCodes = new Set([
+    'KeyW','KeyA','KeyS','KeyD',
+    'ArrowUp','ArrowLeft','ArrowDown','ArrowRight',
+  ]);
 
-      // 대기/게임오버/레벨완료 화면에서 Enter/Space로 시작
-      if ((gameState === 'start' || gameState === 'gameOver' || gameState === 'levelComplete') &&
-          (e.code === 'Enter' || e.code === 'Space')) {
-        startGame();
-      }
-    };
-    const onKeyUp = (e: KeyboardEvent) => {
-      keysRef.current[e.code] = false;
-    };
+  const onKeyDown = (e: KeyboardEvent) => {
+    // 브라우저 기본동작 방지(화살표 스크롤 등)
+    if (movementCodes.has(e.code)) {
+      e.preventDefault();
+    }
+    keysRef.current[e.code] = true;
 
-    window.addEventListener('keydown', onKeyDown);
-    window.addEventListener('keyup', onKeyUp);
-    return () => {
-      window.removeEventListener('keydown', onKeyDown);
-      window.removeEventListener('keyup', onKeyUp);
-    };
-    // gameState/startGame을 의존성에 넣지 않음: 시작키만 누르면 최신 startGame이 호출됨
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [/* mount once */]);
+    // 대기/게임오버/레벨완료 화면에서 Enter/Space로 시작
+    if ((gameState === 'start' || gameState === 'gameOver' || gameState === 'levelComplete') &&
+        (e.code === 'Enter' || e.code === 'Space')) {
+      startGame();
+    }
+  };
+
+  const onKeyUp = (e: KeyboardEvent) => {
+    if (movementCodes.has(e.code)) {
+      e.preventDefault();
+    }
+    keysRef.current[e.code] = false;
+  };
+
+  // ⚠️ capture: true 로 등록 (버블링 전에 확실히 잡음)
+  document.addEventListener('keydown', onKeyDown, { capture: true });
+  document.addEventListener('keyup', onKeyUp, { capture: true });
+
+  return () => {
+    document.removeEventListener('keydown', onKeyDown, { capture: true } as any);
+    document.removeEventListener('keyup', onKeyUp, { capture: true } as any);
+  };
+// eslint-disable-next-line react-hooks/exhaustive-deps
+}, []); // 한번만 등록
 
   // 타이머
   useEffect(() => {
@@ -116,6 +130,10 @@ export default function ShoeHunt3D() {
     renderer.shadowMap.enabled = true;
     mount.appendChild(renderer.domElement);
     rendererRef.current = renderer;
+
+    // ⬇️ 추가: 키 입력 안정화를 위해 캔버스에 포커스 가능/즉시 포커스
+    renderer.domElement.setAttribute('tabindex', '0');
+    (renderer.domElement as HTMLCanvasElement).focus({ preventScroll: true });
 
     // 조명
     scene.add(new THREE.AmbientLight(0xffffff, 0.6));
