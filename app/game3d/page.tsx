@@ -202,4 +202,234 @@ export default function ShoeHunt3D() {
     };
 
     const onMouseMove = (e: MouseEvent) => {
-      if (document.pointerLockElement === renderer.domElem
+      if (document.pointerLockElement === renderer.domElement) {
+        playerRef.current.rotationY -= e.movementX * 0.002;
+      }
+    };
+
+    const onResize = () => {
+      camera.aspect = window.innerWidth / window.innerHeight;
+      camera.updateProjectionMatrix();
+      renderer.setSize(window.innerWidth, window.innerHeight);
+    };
+
+    window.addEventListener('keydown', onKeyDown);
+    window.addEventListener('keyup', onKeyUp);
+    window.addEventListener('click', onClick);
+    window.addEventListener('mousemove', onMouseMove);
+    window.addEventListener('resize', onResize);
+
+    renderer.domElement.addEventListener('click', () => {
+      renderer.domElement.requestPointerLock();
+    });
+
+    // 애니메이션 루프
+    const animate = () => {
+      if (gameState !== 'playing') return;
+
+      animationIdRef.current = requestAnimationFrame(animate);
+
+      const speed = 0.1;
+      const rotation = playerRef.current.rotationY;
+
+      if (keysRef.current['w'] || keysRef.current['arrowup']) {
+        playerRef.current.x -= Math.sin(rotation) * speed;
+        playerRef.current.z -= Math.cos(rotation) * speed;
+      }
+      if (keysRef.current['s'] || keysRef.current['arrowdown']) {
+        playerRef.current.x += Math.sin(rotation) * speed;
+        playerRef.current.z += Math.cos(rotation) * speed;
+      }
+      if (keysRef.current['a'] || keysRef.current['arrowleft']) {
+        playerRef.current.x -= Math.cos(rotation) * speed;
+        playerRef.current.z += Math.sin(rotation) * speed;
+      }
+      if (keysRef.current['d'] || keysRef.current['arrowright']) {
+        playerRef.current.x += Math.cos(rotation) * speed;
+        playerRef.current.z -= Math.sin(rotation) * speed;
+      }
+
+      // 경계
+      playerRef.current.x = Math.max(-14, Math.min(14, playerRef.current.x));
+      playerRef.current.z = Math.max(-14, Math.min(14, playerRef.current.z));
+
+      camera.position.x = playerRef.current.x;
+      camera.position.z = playerRef.current.z;
+      camera.rotation.y = playerRef.current.rotationY;
+
+      renderer.render(scene, camera);
+    };
+
+    animate();
+
+    // cleanup
+    return () => {
+      window.removeEventListener('keydown', onKeyDown);
+      window.removeEventListener('keyup', onKeyUp);
+      window.removeEventListener('click', onClick);
+      window.removeEventListener('mousemove', onMouseMove);
+      window.removeEventListener('resize', onResize);
+
+      if (animationIdRef.current) {
+        cancelAnimationFrame(animationIdRef.current);
+        animationIdRef.current = null;
+      }
+
+      try {
+        if (renderer.domElement && mount.contains(renderer.domElement)) {
+          mount.removeChild(renderer.domElement);
+        }
+      } catch {
+        // ignore
+      }
+      renderer.dispose();
+    };
+  }, [gameState]);
+
+  // 게임 시작(의존성 안정화)
+  const startGame = useCallback(() => {
+    const shoesCount = level;
+    setTotalShoes(shoesCount);
+    setFoundShoes(0);
+    setTimeLeft(Math.max(20, 40 - level * 3));
+    setGameState('playing');
+    setTimeout(() => initThreeJS(shoesCount), 100);
+  }, [initThreeJS, level]);
+
+  // 레벨 완료 체크
+  useEffect(() => {
+    if (gameState === 'playing' && foundShoes >= totalShoes && totalShoes > 0) {
+      if (timerIntervalRef.current) clearInterval(timerIntervalRef.current);
+      setScore((prev) => prev + level * 100 + timeLeft * 10);
+      setGameState('levelComplete');
+
+      const to = setTimeout(() => {
+        const next = level + 1;
+        setLevel(next);
+        const nextShoes = next;
+        setTotalShoes(nextShoes);
+        setFoundShoes(0);
+        setTimeLeft(Math.max(20, 40 - next * 3));
+        setGameState('playing');
+        setTimeout(() => initThreeJS(nextShoes), 100);
+      }, 3000);
+
+      return () => clearTimeout(to);
+    }
+  }, [foundShoes, totalShoes, gameState, level, timeLeft, initThreeJS]);
+
+  const resetGame = () => {
+    setLevel(1);
+    setScore(0);
+    setGameState('start');
+    if (timerIntervalRef.current) clearInterval(timerIntervalRef.current);
+  };
+
+  return (
+    <div className="relative w-screen h-screen overflow-hidden bg-black">
+      <div ref={mountRef} className="w-full h-full" />
+
+      {/* UI 오버레이 */}
+      <div className="absolute top-0 left-0 right-0 p-4 pointer-events-none">
+        {gameState === 'playing' && (
+          <div className="flex justify-between items-start">
+            <div className="bg-black bg-opacity-60 text-white p-4 rounded-lg">
+              <div className="text-xl font-bold">레벨 {level}</div>
+              <div className="text-lg">점수: {score}</div>
+              <div className="text-lg">
+                신발: {foundShoes}/{totalShoes}
+              </div>
+            </div>
+
+            <div
+              className={`bg-black bg-opacity-60 text-white p-4 rounded-lg text-2xl font-bold ${
+                timeLeft <= 5 ? 'text-red-400 animate-pulse' : ''
+              }`}
+            >
+              ⏰ {timeLeft}초
+            </div>
+          </div>
+        )}
+      </div>
+
+      <div className="absolute bottom-4 left-0 right-0 pointer-events-none">
+        {gameState === 'playing' && (
+          <div className="text-center">
+            <div className="bg-red-600 bg-opacity-80 text-white px-6 py-3 rounded-lg inline-block mb-2">
+              💬 버스 곧 출발해요! 신발 찾으세요!
+            </div>
+            <div className="bg-black bg-opacity-60 text-white px-4 py-2 rounded-lg inline-block text-sm">
+              🎮 WASD로 이동 | 마우스로 둘러보기 | 클릭해서 신발 찾기
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* 시작 화면 */}
+      {gameState === 'start' && (
+        <div className="absolute inset-0 flex items-center justify-center bg-gradient-to-br from-blue-900 to-purple-900 bg-opacity-95">
+          <div className="text-center space-y-6 p-8 max-w-2xl">
+            <h1 className="text-5xl font-bold text-white">나디아의 꿈 3D</h1>
+            <h2 className="text-3xl text-yellow-300">신발 찾기 게임 👟</h2>
+
+            <div className="bg-white bg-opacity-10 p-6 rounded-xl text-white">
+              <p className="text-xl mb-4">🌙 3D 세계에서 신발을 찾아라!</p>
+              <ul className="text-left space-y-2">
+                <li>🎮 WASD 또는 화살표로 이동</li>
+                <li>🖱️ 마우스로 둘러보기</li>
+                <li>👆 신발을 클릭해서 찾기</li>
+                <li>⏰ 시간 안에 모든 신발 찾기!</li>
+              </ul>
+            </div>
+
+            <button
+              onClick={startGame}
+              className="bg-yellow-500 hover:bg-yellow-600 text-black px-12 py-4 rounded-full text-2xl font-bold transition-all transform hover:scale-105 pointer-events-auto"
+            >
+              게임 시작!
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* 레벨 완료 */}
+      {gameState === 'levelComplete' && (
+        <div className="absolute inset-0 flex items-center justify-center bg-black bg-opacity-80">
+          <div className="text-center space-y-4">
+            <h1 className="text-6xl font-bold text-green-400 animate-bounce">
+              레벨 클리어! 🎉
+            </h1>
+            <p className="text-3xl text-white">모든 신발을 찾았어요!</p>
+            <p className="text-2xl text-yellow-300">
+              + {level * 100 + timeLeft * 10} 점
+            </p>
+            <p className="text-xl text-white">다음 레벨로...</p>
+          </div>
+        </div>
+      )}
+
+      {/* 게임 오버 */}
+      {gameState === 'gameOver' && (
+        <div className="absolute inset-0 flex items-center justify-center bg-gradient-to-br from-red-900 to-black bg-opacity-95">
+          <div className="text-center space-y-6 p-8">
+            <h1 className="text-5xl font-bold text-red-400">시간 초과! ⏰</h1>
+            <p className="text-2xl text-white">버스가 출발했어요... 🚌</p>
+
+            <div className="bg-white bg-opacity-10 p-6 rounded-xl">
+              <p className="text-3xl font-bold text-yellow-300 mb-2">최종 점수</p>
+              <p className="text-5xl font-bold text-white">{score}</p>
+              <p className="text-xl text-gray-300 mt-2">레벨 {level} 도달</p>
+            </div>
+
+            <button
+              onClick={resetGame}
+              className="bg-purple-600 hover:bg-purple-700 text-white px-12 py-4 rounded-full text-2xl font-bold transition-all transform hover:scale-105 pointer-events-auto"
+            >
+              다시 도전하기
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
