@@ -23,7 +23,7 @@ export default function ShoeHunt3D() {
   const animationIdRef = useRef<number | null>(null);
   const timerIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
-  // 전역 키 리스너: document 캡처 단계 + preventDefault + e.code 사용
+// 전역 키 리스너: document 캡처 단계 + preventDefault + e.code 사용
 useEffect(() => {
   const movementCodes = new Set([
     'KeyW','KeyA','KeyS','KeyD',
@@ -31,13 +31,9 @@ useEffect(() => {
   ]);
 
   const onKeyDown = (e: KeyboardEvent) => {
-    // 브라우저 기본동작 방지(화살표 스크롤 등)
-    if (movementCodes.has(e.code)) {
-      e.preventDefault();
-    }
+    if (movementCodes.has(e.code)) e.preventDefault();
     keysRef.current[e.code] = true;
 
-    // 대기/게임오버/레벨완료 화면에서 Enter/Space로 시작
     if ((gameState === 'start' || gameState === 'gameOver' || gameState === 'levelComplete') &&
         (e.code === 'Enter' || e.code === 'Space')) {
       startGame();
@@ -45,22 +41,23 @@ useEffect(() => {
   };
 
   const onKeyUp = (e: KeyboardEvent) => {
-    if (movementCodes.has(e.code)) {
-      e.preventDefault();
-    }
+    if (movementCodes.has(e.code)) e.preventDefault();
     keysRef.current[e.code] = false;
   };
 
-  // ⚠️ capture: true 로 등록 (버블링 전에 확실히 잡음)
-  document.addEventListener('keydown', onKeyDown, { capture: true });
-  document.addEventListener('keyup', onKeyUp, { capture: true });
+  // ✅ 타입 명시된 옵션 객체를 재사용 (any 금지)
+  const listenerOptions: AddEventListenerOptions & EventListenerOptions = { capture: true };
+
+  document.addEventListener('keydown', onKeyDown, listenerOptions);
+  document.addEventListener('keyup', onKeyUp, listenerOptions);
 
   return () => {
-    document.removeEventListener('keydown', onKeyDown, { capture: true } as any);
-    document.removeEventListener('keyup', onKeyUp, { capture: true } as any);
+    document.removeEventListener('keydown', onKeyDown, listenerOptions);
+    document.removeEventListener('keyup', onKeyUp, listenerOptions);
   };
 // eslint-disable-next-line react-hooks/exhaustive-deps
-}, []); // 한번만 등록
+}, []); // 한 번만 등록
+
 
   // 타이머
   useEffect(() => {
