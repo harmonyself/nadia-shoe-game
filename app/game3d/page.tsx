@@ -394,7 +394,7 @@ export default function ShoeHunt3D() {
             <h1 className="text-5xl font-bold text-white">나디아의 꿈 3D</h1>
             <h2 className="text-3xl text-yellow-300">신발 찾기 게임 👟</h2>
 
-            <div className="bg-white bg-opacity-10 p-6 rounded-xl text-white">
+            <div className="bg-white bg-opacity-10 p-6 rounded-xl text-black">
               <p className="text-xl mb-4">🌙 3D 세계에서 신발을 찾아라!</p>
               <ul className="text-left space-y-2">
                 <li>🎮 WASD 또는 화살표로 이동</li>
